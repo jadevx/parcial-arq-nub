@@ -1,23 +1,22 @@
 #!/bin/bash
 # document.sh — Script autocontenido de documentación con IA
 # Uso: curl -fsSL https://raw.githubusercontent.com/jadevx/parcial-arq-nub/main/document.sh | bash -s -- <KIRO_API_KEY> [output_path]
-#
-# Argumentos:
-#   $1 - KIRO_API_KEY (obligatorio)
-#   $2 - Ruta de salida del PDF (opcional, default: docs/documentation.pdf)
+# O con env var: KIRO_API_KEY=xxx bash document.sh
 
 set -e
 
-KIRO_API_KEY="${1}"
+# Tomar key de argumento o de variable de entorno
+KIRO_API_KEY="${1:-$KIRO_API_KEY}"
 OUTPUT_PATH="${2:-docs/documentation.pdf}"
 AGENT_REPO="https://github.com/jadevx/parcial-arq-nub.git"
 WORK_DIR=$(pwd)
 
 if [ -z "$KIRO_API_KEY" ]; then
-  echo "Error: Se requiere KIRO_API_KEY como primer argumento"
-  echo "Uso: bash document.sh <KIRO_API_KEY> [output_path]"
+  echo "Error: Se requiere KIRO_API_KEY como argumento o variable de entorno"
   exit 1
 fi
+
+export KIRO_API_KEY
 
 echo "=== Pipeline de Documentación con IA ==="
 echo "Proyecto: $WORK_DIR"
@@ -30,10 +29,10 @@ if ! command -v kiro-cli &> /dev/null; then
   export PATH="$HOME/.local/bin:$PATH"
 fi
 
-# 2. Instalar Pandoc
+# 2. Instalar Pandoc + XeLaTeX
 echo "--- Instalando Pandoc ---"
 if ! command -v pandoc &> /dev/null; then
-  sudo apt-get update -qq && sudo apt-get install -y -qq pandoc texlive-xetex texlive-fonts-recommended
+  sudo apt-get update -qq && sudo apt-get install -y -qq pandoc texlive-xetex texlive-fonts-recommended fonts-dejavu
 fi
 
 # 3. Clonar repo del agente documentador
@@ -50,13 +49,18 @@ cp "$AGENT_DIR/.kiro/steering/documentacion.md" "$WORK_DIR/.kiro/steering/"
 # 5. Ejecutar agente documentador
 echo "--- Ejecutando agente IA ---"
 mkdir -p "$WORK_DIR/docs"
-export KIRO_API_KEY
 kiro-cli chat \
   --agent documenter \
   --no-interactive \
   "Analiza el código fuente de este repositorio y genera la documentación completa. Guarda el resultado en docs/DOCUMENTACION.md"
 
-# 6. Convertir a PDF
+# 6. Verificar que se generó el markdown
+if [ ! -f "$WORK_DIR/docs/DOCUMENTACION.md" ]; then
+  echo "Error: El agente no generó docs/DOCUMENTACION.md"
+  exit 1
+fi
+
+# 7. Convertir a PDF
 echo "--- Convirtiendo a PDF ---"
 OUTPUT_DIR=$(dirname "$OUTPUT_PATH")
 mkdir -p "$OUTPUT_DIR"
@@ -70,7 +74,7 @@ pandoc "$WORK_DIR/docs/DOCUMENTACION.md" \
   --toc \
   --toc-depth=3
 
-# 7. Limpiar
+# 8. Limpiar
 echo "--- Limpiando ---"
 rm -rf "$AGENT_DIR"
 rm -rf "$WORK_DIR/.kiro"
