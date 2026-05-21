@@ -1,7 +1,8 @@
 #!/bin/bash
 # document.sh — Documentación automática con IA
+# Flujo: Kiro genera MD → Pandoc convierte a HTML (con Mermaid) → Playwright genera PDF
+#
 # Uso: curl -fsSL https://raw.githubusercontent.com/jadevx/parcial-arq-nub/main/document.sh | bash -s -- <KIRO_API_KEY> [output_path]
-# O con env var: KIRO_API_KEY=xxx bash document.sh
 #
 # Variables opcionales:
 #   APP_URL      — URL de la app para capturas de pantalla
@@ -44,14 +45,14 @@ if ! command -v kiro-cli &> /dev/null; then
   export PATH="$HOME/.local/bin:$PATH"
 fi
 
-# 3. Instalar Pandoc + XeLaTeX
-echo "--- Instalando Pandoc + LaTeX ---"
+# 3. Instalar Pandoc
+echo "--- Instalando Pandoc ---"
 if ! command -v pandoc &> /dev/null; then
   sudo apt-get update -qq
-  sudo apt-get install -y -qq pandoc texlive-xetex texlive-fonts-recommended fonts-dejavu
+  sudo apt-get install -y -qq pandoc
 fi
 
-# 4. Instalar Playwright (para capturas)
+# 4. Instalar Playwright
 echo "--- Instalando Playwright ---"
 npm init -y --silent 2>/dev/null || true
 npm install playwright --silent 2>/dev/null || true
@@ -74,7 +75,7 @@ mkdir -p "$WORK_DIR/docs" "$WORK_DIR/docs/screenshots" "$WORK_DIR/scripts/screen
 kiro-cli chat \
   --agent documenter \
   --no-interactive \
-  "Analiza el código fuente de este repositorio y genera la documentación completa siguiendo los steerings. Incluye capturas de pantalla si APP_URL está disponible (APP_URL=$APP_URL). Guarda el resultado en docs/DOCUMENTACION.md con las imágenes en docs/screenshots/"
+  "Analiza el código fuente de este repositorio y genera la documentación completa siguiendo los steerings. Si APP_URL está disponible (APP_URL=$APP_URL), toma capturas de pantalla. Guarda el resultado en docs/DOCUMENTACION.md con las imágenes referenciadas como screenshots/nombre.png"
 
 # 8. Verificar que se generó el markdown
 if [ ! -f "$WORK_DIR/docs/DOCUMENTACION.md" ]; then
@@ -82,32 +83,38 @@ if [ ! -f "$WORK_DIR/docs/DOCUMENTACION.md" ]; then
   exit 1
 fi
 
-# 9. Convertir a PDF
-echo "--- Convirtiendo a PDF ---"
-OUTPUT_DIR=$(dirname "$OUTPUT_PATH")
-mkdir -p "$OUTPUT_DIR"
+echo "--- Markdown generado correctamente ---"
 
+# 9. Convertir MD → HTML con Pandoc + template Mermaid + filtro Lua
+echo "--- Convirtiendo MD a HTML ---"
 cd "$WORK_DIR/docs"
 pandoc DOCUMENTACION.md \
-  -o "$WORK_DIR/$OUTPUT_PATH" \
-  --pdf-engine=xelatex \
-  -V geometry:margin=2.5cm \
-  -V mainfont="DejaVu Sans" \
-  -V monofont="DejaVu Sans Mono" \
-  -V lang=es \
-  -V colorlinks=false \
-  --toc \
-  --toc-depth=3 \
+  -o DOCUMENTACION.html \
+  --template="$AGENT_DIR/templates/template.html" \
+  --lua-filter="$AGENT_DIR/templates/mermaid-filter.lua" \
+  --metadata title="Documentación del Proyecto" \
   --resource-path=.
 cd "$WORK_DIR"
 
-# 10. Limpiar
+echo "--- HTML generado ---"
+
+# 10. Convertir HTML → PDF con Playwright (renderiza Mermaid como gráficos)
+echo "--- Convirtiendo HTML a PDF ---"
+OUTPUT_DIR=$(dirname "$OUTPUT_PATH")
+mkdir -p "$OUTPUT_DIR"
+
+node "$AGENT_DIR/templates/html-to-pdf.js" "$WORK_DIR/docs/DOCUMENTACION.html" "$WORK_DIR/$OUTPUT_PATH"
+
+# 11. Limpiar
 echo "--- Limpiando ---"
 rm -rf "$AGENT_DIR"
 rm -rf "$WORK_DIR/.kiro"
 rm -f "$WORK_DIR/docs/DOCUMENTACION.md"
+rm -f "$WORK_DIR/docs/DOCUMENTACION.html"
 rm -rf "$WORK_DIR/docs/screenshots"
 rm -rf "$WORK_DIR/scripts/screenshots"
+rm -f "$WORK_DIR/package.json" "$WORK_DIR/package-lock.json"
+rm -rf "$WORK_DIR/node_modules"
 
 echo "=== Documentación generada: $OUTPUT_PATH ==="
 ls -lh "$OUTPUT_PATH"
