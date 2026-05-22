@@ -1,7 +1,7 @@
 ---
 title: "Capturas de Pantalla"
-description: "Sistema de capturas con Playwright para documentar visualmente la aplicación."
-version: "1.0.0"
+description: "Sistema de capturas con Playwright. Solo aplica si el proyecto tiene frontend web."
+version: "2.0.0"
 tags: ["capturas", "screenshots", "playwright"]
 inclusion: always
 ---
@@ -10,109 +10,29 @@ inclusion: always
 
 ## Cuándo se ejecuta
 
-Solo si la variable `APP_URL` está disponible en el entorno. Si no existe, se omiten las capturas.
+SOLO si el proyecto tiene un frontend web (HTML, React, Vue, Angular, etc.). Si el proyecto es solo una API REST sin interfaz visual, NO se toman capturas.
+
+Para determinar si hay frontend, verificar:
+- Archivos HTML, JSX, TSX, Vue, Svelte en el proyecto
+- Carpetas como `public/`, `views/`, `templates/`, `frontend/`, `client/`
+- Dependencias de frontend (react, vue, angular, svelte, ejs, pug, handlebars)
+
+Si es solo una API (Express, FastAPI, Spring Boot sin vistas), NO generar capturas. Documentar los endpoints con tablas y ejemplos JSON en su lugar.
 
 ---
 
-## Proceso
+## Proceso (solo si hay frontend)
 
-1. Crear `scripts/screenshots/core.js` con utilidades
-2. Crear `scripts/screenshots/run-all.js` con la lista de páginas a capturar
-3. Ejecutar: `node scripts/screenshots/run-all.js`
-4. Las capturas se guardan en `docs/screenshots/`
-
----
-
-## core.js — Utilidades
-
-```javascript
-const { chromium } = require('playwright');
-const fs = require('fs');
-const path = require('path');
-
-const SCREENSHOTS_DIR = path.resolve(__dirname, '../../docs/screenshots');
-fs.mkdirSync(SCREENSHOTS_DIR, { recursive: true });
-
-async function launchBrowser() {
-  return chromium.launch({ headless: true });
-}
-
-async function newPage(browser) {
-  const page = await browser.newPage();
-  await page.setViewportSize({ width: 1280, height: 900 });
-  return page;
-}
-
-function save(name, buffer) {
-  fs.writeFileSync(path.join(SCREENSHOTS_DIR, name), buffer);
-  console.log(`  ✓ ${name}`);
-}
-
-function getUrl() { return (process.env.APP_URL || '').replace(/\/+$/, ''); }
-function getUser() { return process.env.APP_USER || ''; }
-function getPass() { return process.env.APP_PASSWORD || ''; }
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-
-module.exports = { launchBrowser, newPage, save, getUrl, getUser, getPass, sleep };
-```
-
----
-
-## run-all.js — Orquestador
-
-El agente debe crear este archivo basándose en las rutas/pantallas que identificó en el análisis del código:
-
-```javascript
-const { launchBrowser, newPage, save, getUrl, sleep } = require('./core');
-
-const PAGES = [
-  // El agente llena esto basándose en las rutas del proyecto
-  { name: '01-home', path: '/' },
-  { name: '02-endpoint', path: '/api/ruta' },
-];
-
-async function main() {
-  const browser = await launchBrowser();
-  const baseUrl = getUrl();
-  if (!baseUrl) { console.log('APP_URL no definida, omitiendo capturas'); process.exit(0); }
-
-  for (const p of PAGES) {
-    const page = await newPage(browser);
-    try {
-      await page.goto(baseUrl + p.path, { waitUntil: 'networkidle', timeout: 15000 });
-      await sleep(1000);
-      const buffer = await page.screenshot({ fullPage: true });
-      save(p.name + '.png', buffer);
-    } catch (err) {
-      console.error(`  ✗ ${p.name}: ${err.message}`);
-    }
-    await page.close();
-  }
-  await browser.close();
-}
-
-main().catch(err => { console.error(err); process.exit(1); });
-```
+1. El script `document.sh` levanta la app localmente antes de ejecutar el agente
+2. El agente crea scripts de captura y los ejecuta contra `http://localhost:PORT`
+3. Las capturas se guardan en `docs/screenshots/`
+4. Se referencian en el markdown
 
 ---
 
 ## Reglas
 
-- Modo headless siempre (CI/CD no tiene pantalla)
-- Viewport 1280x900
-- Capturas fullPage
-- Si una página falla, continuar con las demás
-- Nombrar con prefijo numérico: `01-nombre.png`, `02-nombre.png`
-- Si APP_URL no existe, salir sin error (exit 0)
-
----
-
-## Referencia en el Markdown
-
-Después de generar las capturas, referenciarlas en `docs/DOCUMENTACION.md`:
-
-```markdown
-![Pantalla principal](screenshots/01-home.png)
-```
-
-La ruta es relativa desde `docs/`.
+- **Sin frontend = sin capturas** — No inventar capturas de endpoints JSON
+- Si hay frontend, capturar las pantallas principales
+- Modo headless siempre
+- Si la app no levanta o falla, omitir capturas sin error
