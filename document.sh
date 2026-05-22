@@ -57,13 +57,19 @@ mkdir -p "$WORK_DIR/.kiro/agents" "$WORK_DIR/.kiro/steering"
 cp "$AGENT_DIR/.kiro/agents/documenter.json" "$WORK_DIR/.kiro/agents/"
 cp "$AGENT_DIR/.kiro/steering/"*.md "$WORK_DIR/.kiro/steering/"
 
-# 6. Ejecutar agente documentador
+# 6. Ejecutar agente documentador (timeout 5 min)
 echo "--- Ejecutando agente IA ---"
 mkdir -p "$WORK_DIR/docs" "$WORK_DIR/docs/screenshots"
-kiro-cli chat \
+timeout 300 kiro-cli chat \
   --agent documenter \
   --no-interactive \
-  "Analiza el código fuente de este repositorio y genera la documentación completa siguiendo los steerings. Guarda el resultado en docs/DOCUMENTACION.md con las imágenes referenciadas como screenshots/nombre.png"
+  "Analiza el código fuente de este repositorio y genera la documentación completa siguiendo los steerings. Guarda el resultado en docs/DOCUMENTACION.md con las imágenes referenciadas como screenshots/nombre.png" || {
+  echo "WARN: Kiro CLI excedió el timeout de 5 minutos"
+  if [ ! -f "$WORK_DIR/docs/DOCUMENTACION.md" ]; then
+    echo "Error: No se generó documentación"
+    exit 1
+  fi
+}
 
 # 7. Verificar que se generó el markdown
 if [ ! -f "$WORK_DIR/docs/DOCUMENTACION.md" ]; then
